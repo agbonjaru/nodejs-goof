@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # Application with security monitoring
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/express-todo
+      - SECURITY_MONITORING=enabled
+    depends_on:
+      - mongodb
+      - security-monitor
+    networks:
+      - security-net
+    volumes:
+      - ./:/app
+      - /app/node_modules
+
+  # MongoDB
+  mongodb:
+    image: mongo:4.4
+    ports:
+      - "27017:27017"
+    networks:
+      - security-net
+    volumes:
+      - mongo-data:/data/db
+
+  # OWASP ZAP for continuous scanning
+  zap:
+    image: owasp/zap2docker-stable
+    command: zap.sh -daemon -port 8090 -host 0.0.0.0 -config api.disablekey=true
+    ports:
+      - "8090:8090"
+    networks:
+      - security-net
+
+  # Security monitoring dashboard
+  security-monitor:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./security/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./security/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - security-net
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./security/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - security-net
+
+  # IAST Agent Sidecar (Example with Contrast)
+  iast-agent:
+    image: contrast/agent-proxy:latest
+    environment:
+      - CONTRAST_API_KEY=${CONTRAST_API_KEY}
+      - CONTRAST_SERVICE_KEY=${CONTRAST_SERVICE_KEY}
+      - CONTRAST_AGENT_SERVICE_HOST=${CONTRAST_HOST:-app.contrastsecurity.com}
+    networks:
+      - security-net
+
+  # Vulnerability Database Update Service
+  vuln-db-updater:
+    image: aquasec/trivy:latest
+    command: image --download-db-only
+    volumes:
+      - trivy-db:/root/.cache/trivy
+    networks:
+      - security-net
+
+networks:
+  security-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  grafana-data:
+  prometheus-data:
+  trivy-db:

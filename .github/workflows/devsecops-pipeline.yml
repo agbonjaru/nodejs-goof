@@ -1,0 +1,319 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly scan
+
+env:
+  NODE_VERSION: '16.x'
+  DOCKER_IMAGE: 'nodejs-goof'
+
+jobs:
+  # SAST - Static Application Security Testing
+  sast-scan:
+    name: SAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Full depth for better analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Snyk SAST
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=low --sarif-file-output=snyk-sast.sarif
+
+      # Semgrep SAST
+      - name: Semgrep Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/nodejs
+            p/owasp-top-ten
+            p/r2c-security-audit
+          generateSarif: true
+
+      # ESLint Security Plugin
+      - name: ESLint Security Analysis
+        run: |
+          npm install --save-dev eslint eslint-plugin-security @microsoft/eslint-formatter-sarif
+          npx eslint . --ext .js,.jsx --format @microsoft/eslint-formatter-sarif --output-file eslint-results.sarif || true
+
+      # NodeJsScan
+      - name: NodeJsScan
+        uses: ajinabraham/njsscan-action@master
+        with:
+          args: '. --sarif --output njsscan-results.sarif || true'
+
+      # Upload all SARIF results
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: .
+          category: sast-scan
+
+  # Dependency Check
+  dependency-check:
+    name: Dependency Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # npm audit
+      - name: Run npm audit
+        run: |
+          npm audit --production --audit-level=low || true
+          npm audit --production --json > npm-audit.json || true
+
+      # OWASP Dependency Check
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'nodejs-goof'
+          path: '.'
+          format: 'ALL'
+          args: >
+            --enableRetired
+            --enableExperimental
+
+      - name: Upload Dependency Check results
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: reports/
+
+  # Secret Scanning
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # TruffleHog Secret Scan
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      # Gitleaks
+      - name: Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Container Security Scan
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ env.DOCKER_IMAGE }}:${{ github.sha }} .
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ github.sha }} ${{ env.DOCKER_IMAGE }}:latest
+
+      # Trivy Container Scan
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKER_IMAGE }}:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+
+      # Grype Container Scan
+      - name: Grype Container Scan
+        uses: anchore/scan-action@v3
+        with:
+          image: '${{ env.DOCKER_IMAGE }}:${{ github.sha }}'
+          fail-build: false
+          output-format: sarif
+
+      - name: Upload Container Scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: container-scan
+
+  # DAST - Dynamic Application Security Testing
+  dast-scan:
+    name: DAST Scan
+    runs-on: ubuntu-latest
+    needs: [sast-scan]
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies and start app
+        run: |
+          npm install
+          npm run start &
+          sleep 30  # Wait for app to start
+
+      # OWASP ZAP Scan
+      - name: OWASP ZAP Scan
+        uses: zaproxy/action-full-scan@v0.4.0
+        with:
+          target: 'http://localhost:3001'
+          allow_issue_writing: false
+          cmd_options: '-j'
+
+      # Nuclei Security Scan
+      - name: Nuclei DAST Scan
+        uses: projectdiscovery/nuclei-action@main
+        with:
+          target: 'http://localhost:3001'
+          flags: '-severity low,medium,high,critical'
+          
+      - name: Upload DAST results
+        uses: actions/upload-artifact@v3
+        with:
+          name: dast-scan-results
+          path: |
+            **/zap_scan_report.html
+            **/nuclei_report.txt
+
+  # IAST - Interactive Application Security Testing (Runtime)
+  iast-runtime-test:
+    name: IAST Runtime Testing
+    runs-on: ubuntu-latest
+    needs: [sast-scan]
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js with IAST Agent
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm install
+
+      # Contrast Security Community Edition (Example)
+      - name: Setup IAST Agent
+        run: |
+          npm install --save-dev @contrast/agent
+          echo "require('@contrast/agent');" > contrast-init.js
+          
+      - name: Run Tests with IAST
+        env:
+          NODE_OPTIONS: "-r ./contrast-init.js"
+          CONTRAST_API_KEY: ${{ secrets.CONTRAST_API_KEY }}
+          CONTRAST_SERVICE_KEY: ${{ secrets.CONTRAST_SERVICE_KEY }}
+          CONTRAST_AGENT_SERVICE_HOST: ${{ secrets.CONTRAST_HOST }}
+        run: |
+          npm test || true
+          
+      # Run integration tests to trigger IAST
+      - name: Run Integration Tests
+        run: |
+          npm run start &
+          APP_PID=$!
+          sleep 30
+          
+          # Run basic security tests
+          curl -X POST http://localhost:3001/login -d "username=admin&password=admin"
+          curl http://localhost:3001/api/todos
+          curl -X POST http://localhost:3001/api/todos -d "todo=test"
+          
+          kill $APP_PID
+
+  # Security Policy Check
+  policy-check:
+    name: Security Policy Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Check for security headers
+      - name: Security Headers Check
+        run: |
+          npm install --save-dev helmet csp-header
+          node -e "
+          const fs = require('fs');
+          const appFile = fs.readFileSync('./app.js', 'utf8');
+          if (!appFile.includes('helmet')) {
+            console.error('Security Warning: Helmet middleware not found');
+            process.exit(1);
+          }
+          "
+
+      # License Check
+      - name: License Check
+        run: |
+          npm install --save-dev license-checker
+          npx license-checker --onlyAllow 'MIT;Apache-2.0;BSD;ISC' || true
+
+  # Security Report Generation
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [sast-scan, dependency-check, secret-scan, container-scan, dast-scan, iast-runtime-test]
+    if: always()
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate Consolidated Report
+        run: |
+          echo "# Security Scan Report" > security-report.md
+          echo "## Scan Date: $(date)" >> security-report.md
+          echo "## Repository: ${{ github.repository }}" >> security-report.md
+          echo "## Branch: ${{ github.ref }}" >> security-report.md
+          echo "## Commit: ${{ github.sha }}" >> security-report.md
+          echo "" >> security-report.md
+          echo "### Scan Results Summary" >> security-report.md
+          echo "- SAST Scan: Completed" >> security-report.md
+          echo "- Dependency Check: Completed" >> security-report.md
+          echo "- Secret Scan: Completed" >> security-report.md
+          echo "- Container Scan: Completed" >> security-report.md
+          echo "- DAST Scan: Completed" >> security-report.md
+          echo "- IAST Runtime Test: Completed" >> security-report.md
+
+      - name: Upload Security Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan-report
+          path: security-report.md

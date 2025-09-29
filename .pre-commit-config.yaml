@@ -1,0 +1,104 @@
+repos:
+  # Security Checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock.json
+
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+
+  # JavaScript/Node.js Linting
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.50.0
+    hooks:
+      - id: eslint
+        files: \.(js|jsx|ts|tsx)$
+        args: ['--fix']
+        additional_dependencies:
+          - eslint@8.50.0
+          - eslint-plugin-security@1.7.1
+          - eslint-plugin-node@11.1.0
+
+  # Security Vulnerability Scanning
+  - repo: local
+    hooks:
+      - id: npm-audit
+        name: npm audit
+        entry: npm audit --production
+        language: system
+        pass_filenames: false
+        files: ^(package\.json|package-lock\.json)$
+
+      - id: snyk-test
+        name: Snyk vulnerability test
+        entry: npx snyk test --severity-threshold=medium
+        language: system
+        pass_filenames: false
+        files: ^(package\.json|package-lock\.json)$
+
+      - id: safety-check
+        name: Safety check
+        entry: bash -c 'npm list --depth=0 --json | npx nsp check || true'
+        language: system
+        pass_filenames: false
+
+  # SAST with Semgrep
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.45.0
+    hooks:
+      - id: semgrep
+        args: ['--config=auto', '--error']
+
+  # General Security and Code Quality
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # Dockerfile Security (if applicable)
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        files: Dockerfile
+
+  # JavaScript Security Patterns
+  - repo: local
+    hooks:
+      - id: check-security-patterns
+        name: Check for insecure patterns
+        entry: bash -c 'grep -rn --include="*.js" -E "(eval\(|exec\(|Function\(|setTimeout.*\(.*[\"'\''][^\"'\'']*\+|setInterval.*\(.*[\"'\''][^\"'\'']*\+)" . || true'
+        language: system
+        pass_filenames: false
+
+      - id: check-hardcoded-secrets
+        name: Check for hardcoded secrets
+        entry: bash -c 'grep -rn --include="*.js" -E "(password|secret|key|token|api_key|apikey)\s*[:=]\s*[\"'\''][^\"'\'']{8,}[\"'\'']" . || true'
+        language: system
+        pass_filenames: false
+
+  # License Compliance
+  - repo: local
+    hooks:
+      - id: license-check
+        name: License compliance check
+        entry: npx license-checker --onlyAllow 'MIT;Apache-2.0;BSD;ISC;Apache*;BSD*;MIT*;Unlicense' --excludePrivatePackages
+        language: system
+        pass_filenames: false
+        files: ^package\.json$
+
+# Additional Configuration
+fail_fast: false
+default_stages: [commit]

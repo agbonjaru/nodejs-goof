@@ -1,0 +1,293 @@
+stages:
+  - build
+  - sast
+  - dependency-check
+  - container-scan
+  - dast
+  - iast
+  - report
+
+variables:
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE"
+  SECURE_LOG_LEVEL: "debug"
+  NODEJS_VERSION: "16"
+
+# Build Stage
+build:app:
+  stage: build
+  image: node:${NODEJS_VERSION}
+  script:
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - node_modules/
+      - public/js/bundle.js
+    expire_in: 1 day
+
+build:docker:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $DOCKER_IMAGE:$CI_COMMIT_SHA .
+    - docker tag $DOCKER_IMAGE:$CI_COMMIT_SHA $DOCKER_IMAGE:latest
+    - docker save $DOCKER_IMAGE:$CI_COMMIT_SHA > image.tar
+  artifacts:
+    paths:
+      - image.tar
+    expire_in: 1 day
+
+# SAST Stage
+sast:eslint:
+  stage: sast
+  image: node:${NODEJS_VERSION}
+  dependencies:
+    - build:app
+  script:
+    - npm install --save-dev eslint eslint-plugin-security @microsoft/eslint-formatter-sarif
+    - npx eslint . --ext .js,.jsx --format @microsoft/eslint-formatter-sarif --output-file eslint-sast.sarif || true
+  artifacts:
+    reports:
+      sast: eslint-sast.sarif
+
+sast:semgrep:
+  stage: sast
+  image: returntocorp/semgrep
+  script:
+    - semgrep --config=auto --sarif --output=semgrep-sast.sarif .
+  artifacts:
+    reports:
+      sast: semgrep-sast.sarif
+
+sast:nodejs-scan:
+  stage: sast
+  image: python:3.9
+  script:
+    - pip install njsscan
+    - njsscan . --sarif -o njsscan-sast.sarif
+  artifacts:
+    reports:
+      sast: njsscan-sast.sarif
+
+sast:snyk:
+  stage: sast
+  image: snyk/snyk:node
+  dependencies:
+    - build:app
+  script:
+    - snyk test --severity-threshold=low --sarif-file-output=snyk-sast.sarif || true
+  artifacts:
+    reports:
+      sast: snyk-sast.sarif
+
+secret_detection:
+  stage: sast
+  image: python:3.9
+  script:
+    - pip install detect-secrets
+    - detect-secrets scan --all-files > secrets-report.json || true
+    - |
+      if [ -s secrets-report.json ] && [ $(jq '.results | length' secrets-report.json) -gt 0 ]; then
+        echo "Secrets detected!"
+        jq '.results' secrets-report.json
+        exit 1
+      fi
+  artifacts:
+    paths:
+      - secrets-report.json
+
+# Dependency Check Stage
+dependency_check:npm:
+  stage: dependency-check
+  image: node:${NODEJS_VERSION}
+  dependencies:
+    - build:app
+  script:
+    - npm audit --production --json > npm-audit.json || true
+    - npm audit --production
+  artifacts:
+    paths:
+      - npm-audit.json
+
+dependency_check:owasp:
+  stage: dependency-check
+  image: owasp/dependency-check:latest
+  script:
+    - /usr/share/dependency-check/bin/dependency-check.sh 
+      --project "nodejs-goof" 
+      --scan . 
+      --format ALL 
+      --enableExperimental 
+      --enableRetired
+  artifacts:
+    paths:
+      - dependency-check-report.*
+
+license_check:
+  stage: dependency-check
+  image: node:${NODEJS_VERSION}
+  dependencies:
+    - build:app
+  script:
+    - npx license-checker --onlyAllow 'MIT;Apache-2.0;BSD;ISC' --excludePrivatePackages > license-report.txt
+  artifacts:
+    paths:
+      - license-report.txt
+
+# Container Scan Stage
+container_scan:trivy:
+  stage: container-scan
+  image: aquasecurity/trivy:latest
+  dependencies:
+    - build:docker
+  script:
+    - docker load < image.tar
+    - trivy image --format sarif --output trivy-container.sarif $DOCKER_IMAGE:$CI_COMMIT_SHA
+  artifacts:
+    reports:
+      container_scanning: trivy-container.sarif
+
+container_scan:grype:
+  stage: container-scan
+  image: anchore/grype:latest
+  dependencies:
+    - build:docker
+  script:
+    - docker load < image.tar
+    - grype $DOCKER_IMAGE:$CI_COMMIT_SHA -o sarif > grype-container.sarif
+  artifacts:
+    reports:
+      container_scanning: grype-container.sarif
+
+# DAST Stage
+dast:zap:
+  stage: dast
+  image: owasp/zap2docker-stable:latest
+  services:
+    - name: $DOCKER_IMAGE:$CI_COMMIT_SHA
+      alias: app
+    - name: mongo:4.4
+      alias: mongodb
+  dependencies:
+    - build:docker
+  script:
+    - docker load < image.tar
+    - sleep 30  # Wait for app to start
+    - zap-full-scan.py -t http://app:3001 -r zap-report.html -J zap-report.json || true
+  artifacts:
+    paths:
+      - zap-report.*
+
+dast:nuclei:
+  stage: dast
+  image: projectdiscovery/nuclei:latest
+  services:
+    - name: $DOCKER_IMAGE:$CI_COMMIT_SHA
+      alias: app
+    - name: mongo:4.4
+      alias: mongodb
+  dependencies:
+    - build:docker
+  script:
+    - docker load < image.tar
+    - sleep 30  # Wait for app to start
+    - nuclei -u http://app:3001 -severity low,medium,high,critical -o nuclei-report.txt
+  artifacts:
+    paths:
+      - nuclei-report.txt
+
+# IAST Stage
+iast:test:
+  stage: iast
+  image: node:${NODEJS_VERSION}
+  services:
+    - mongo:4.4
+  dependencies:
+    - build:app
+  before_script:
+    - npm install --save-dev @contrast/agent
+    - echo "require('@contrast/agent');" > contrast-init.js
+  script:
+    - export NODE_OPTIONS="-r ./contrast-init.js"
+    - export MONGODB_URI="mongodb://mongo:27017/express-todo"
+    - npm test || true
+    - |
+      # Run integration tests with IAST monitoring
+      npm start &
+      APP_PID=$!
+      sleep 30
+      
+      # Execute test scenarios
+      curl -X POST http://localhost:3001/login -d "username=admin&password=admin"
+      curl http://localhost:3001/api/todos
+      curl -X POST http://localhost:3001/api/todos -d "todo=test"
+      
+      kill $APP_PID
+  artifacts:
+    paths:
+      - .contrast/
+
+# Security Report Generation
+security_report:
+  stage: report
+  image: node:${NODEJS_VERSION}
+  dependencies:
+    - sast:eslint
+    - sast:semgrep
+    - sast:nodejs-scan
+    - sast:snyk
+    - secret_detection
+    - dependency_check:npm
+    - dependency_check:owasp
+    - container_scan:trivy
+    - container_scan:grype
+    - dast:zap
+    - dast:nuclei
+  script:
+    - |
+      cat > security-report.md << EOF
+      # Security Scan Report
+      
+      ## Project: nodejs-goof
+      ## Pipeline: $CI_PIPELINE_ID
+      ## Commit: $CI_COMMIT_SHA
+      ## Date: $(date)
+      
+      ### Summary
+      
+      | Scan Type | Tool | Status |
+      |-----------|------|--------|
+      | SAST | ESLint Security | ✅ |
+      | SAST | Semgrep | ✅ |
+      | SAST | NodeJSScan | ✅ |
+      | SAST | Snyk | ✅ |
+      | Secret Detection | detect-secrets | ✅ |
+      | Dependency Check | npm audit | ✅ |
+      | Dependency Check | OWASP | ✅ |
+      | Container Scan | Trivy | ✅ |
+      | Container Scan | Grype | ✅ |
+      | DAST | OWASP ZAP | ✅ |
+      | DAST | Nuclei | ✅ |
+      | IAST | Contrast | ✅ |
+      
+      ### Detailed Results
+      
+      Detailed scan results are available in the pipeline artifacts.
+      
+      EOF
+  artifacts:
+    paths:
+      - security-report.md
+    reports:
+      junit: security-report.xml
+
+# Include GitLab's built-in security templates
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+  - template: Security/Container-Scanning.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
+  - template: Security/Dependency-Scanning.gitlab-ci.yml
+  - template: Security/License-Scanning.gitlab-ci.yml
