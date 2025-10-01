@@ -1,27 +1,57 @@
-version: "2"
 services:
   goof:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: goof
     environment:
       - DOCKER=1
+      - MONGODB_URI=mongodb://goof-mongo:27017/goof
+      - MYSQL_HOST=goof-mysql
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root
+      - MYSQL_DATABASE=acme
     ports:
       - "3001:3001"
       - "9229:9229"
-    links:
-      - goof-mongo
     depends_on:
       - goof-mongo
+      - goof-mysql
+    restart: unless-stopped
+    networks:
+      - goof-network
+
   goof-mongo:
     container_name: goof-mongo
-    image: mongo:3
+    image: mongo:4.4
+    platform: linux/arm64
     ports:
       - "27017:27017"
-  good-mysql:
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    networks:
+      - goof-network
+
+  goof-mysql:
     container_name: goof-mysql
-    image: mysql:5
+    image: mysql:8.0
+    platform: linux/arm64
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: acme
     ports:
       - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - goof-network
+
+volumes:
+  mongo-data:
+  mysql-data:
+
+networks:
+  goof-network:
+    driver: bridge
