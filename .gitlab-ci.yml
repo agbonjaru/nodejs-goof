@@ -302,17 +302,109 @@ deploy:registry:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - echo "Docker image deployed to GitLab Container Registry"
-    - echo "Image: $DOCKER_IMAGE:$DOCKER_TAG"
-    - echo "Latest: $DOCKER_IMAGE:latest"
-  only:
-    - main
-    - master
+    - echo "Image - $DOCKER_IMAGE:$DOCKER_TAG"
+    - echo "Latest - $DOCKER_IMAGE:latest"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
 
-# Include GitLab's built-in security templates
-include:
-  - template: Security/SAST.gitlab-ci.yml
-  - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: Security/Container-Scanning.gitlab-ci.yml
-  - template: Security/DAST.gitlab-ci.yml
-  - template: Security/Dependency-Scanning.gitlab-ci.yml
-  - template: Security/License-Scanning.gitlab-ci.yml
+deploy:runner:
+  stage: deploy
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  dependencies:
+    - build:docker
+  variables:
+    APP_PORT: "3001"
+    CONTAINER_NAME: "nodejs-goof-app"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # Stop and remove existing container
+    - docker stop $CONTAINER_NAME || true
+    - docker rm $CONTAINER_NAME || true
+
+    # Load the Docker image
+    - docker load < image.tar
+
+    # Run MongoDB
+    - docker stop nodejs-goof-mongo || true
+    - docker rm nodejs-goof-mongo || true
+    - docker run -d --name nodejs-goof-mongo -p 27017:27017 mongo:4.4
+
+    # Run MySQL
+    - docker stop nodejs-goof-mysql || true
+    - docker rm nodejs-goof-mysql || true
+    - docker run -d --name nodejs-goof-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=acme mysql:5.7
+
+    # Wait for databases to start
+    - sleep 10
+
+    # Run the application
+    - |
+      docker run -d \
+        --name $CONTAINER_NAME \
+        -p $APP_PORT:3001 \
+        --link nodejs-goof-mongo:mongo \
+        --link nodejs-goof-mysql:mysql \
+        -e DOCKER=1 \
+        -e MONGODB_URI=mongodb://nodejs-goof-mongo:27017/goof \
+        -e MYSQL_HOST=nodejs-goof-mysql \
+        -e MYSQL_USER=root \
+        -e MYSQL_PASSWORD=root \
+        -e MYSQL_DATABASE=acme \
+        $DOCKER_IMAGE:$DOCKER_TAG
+
+    # Wait for app to start
+    - sleep 5
+
+    # Get the runner's hostname/IP
+    - RUNNER_IP=$(hostname -I | awk '{print $1}')
+
+    # Display deployment information
+    - echo "========================================="
+    - echo "Application Deployed Successfully!"
+    - echo "========================================="
+    - echo "Application URL - http://$RUNNER_IP:$APP_PORT"
+    - echo "Alternative - http://localhost:$APP_PORT (if accessing from runner host)"
+    - echo "Container Name - $CONTAINER_NAME"
+    - echo "Docker Image - $DOCKER_IMAGE:$DOCKER_TAG"
+    - echo "========================================="
+    - echo "MongoDB - nodejs-goof-mongo:27017"
+    - echo "MySQL - nodejs-goof-mysql:3306"
+    - echo "========================================="
+
+    # Verify container is running
+    - docker ps | grep $CONTAINER_NAME
+
+    # Check application health
+    - |
+      for i in {1..10}; do
+        if wget --spider --tries=1 --timeout=2 http://localhost:$APP_PORT 2>/dev/null; then
+          echo "✅ Application is healthy and responding!"
+          exit 0
+        fi
+        echo "Waiting for application to be ready... ($i/10)"
+        sleep 3
+      done
+      echo "⚠️  Application deployed but health check timed out"
+  environment:
+    name: production
+    url: http://$RUNNER_IP:$APP_PORT
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+  tags:
+    - docker
+
+# Include GitLab's built-in security templates (optional)
+# Uncomment these if you have GitLab Ultimate/Gold tier
+# include:
+#   - template: Security/SAST.gitlab-ci.yml
+#   - template: Security/Secret-Detection.gitlab-ci.yml
+#   - template: Security/Container-Scanning.gitlab-ci.yml
+#   - template: Security/DAST.gitlab-ci.yml
+#   - template: Security/Dependency-Scanning.gitlab-ci.yml
+
+
+
+  
